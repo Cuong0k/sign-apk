@@ -8,10 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Patch URLs
+        run: |
+          python3 patch.py
+          python3 -c "
+import zipfile
+with zipfile.ZipFile('vpnclient_patched.apk') as z:
+    d = z.read('lib/arm64-v8a/libapp.so')
+print('old còn:', d.count(b'xbdemo.slaglab.com'))
+print('new có:', d.count(b'apk1.jiangsuhk.com'))
+"
       - name: Zipalign
         run: |
-          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -1)
-          $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/zipalign -p -f 4 vpnclient_patched.apk vpnclient_aligned.apk
+          BT=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -1)
+          $ANDROID_SDK_ROOT/build-tools/$BT/zipalign -p -f 4 vpnclient_patched.apk vpnclient_aligned.apk
       - name: Generate keystore
         run: |
           keytool -genkey -v -keystore debug.keystore -alias key0 \
@@ -20,12 +30,11 @@ jobs:
             -dname "CN=Debug,O=Android,C=US"
       - name: Sign
         run: |
-          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -1)
-          APKSIGNER=$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner
-          $APKSIGNER sign --ks debug.keystore --ks-key-alias key0 \
+          BT=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -1)
+          $ANDROID_SDK_ROOT/build-tools/$BT/apksigner sign \
+            --ks debug.keystore --ks-key-alias key0 \
             --ks-pass pass:android --key-pass pass:android \
             --out vpnclient_final.apk vpnclient_aligned.apk
-          $APKSIGNER verify --verbose vpnclient_final.apk | head -3
       - uses: actions/upload-artifact@v4
         with:
           name: vpnclient-signed
