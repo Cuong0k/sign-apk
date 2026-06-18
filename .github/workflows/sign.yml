@@ -1,0 +1,47 @@
+name: Patch and Sign APK
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch libapp.so URL
+        run: python3 patch.py
+
+      - name: Zipalign (page-align .so files)
+        run: |
+          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -1)
+          ZIPALIGN=$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/zipalign
+          echo "zipalign version: $BUILD_TOOLS"
+          # -p: page-align .so files (required for extractNativeLibs=false)
+          $ZIPALIGN -p -f 4 vpnclient_patched.apk vpnclient_aligned.apk
+          echo "Aligned OK"
+
+      - name: Generate keystore
+        run: |
+          keytool -genkey -v \
+            -keystore debug.keystore -alias key0 \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Debug,O=Android,C=US"
+
+      - name: Sign with apksigner
+        run: |
+          BUILD_TOOLS=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -1)
+          APKSIGNER=$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS/apksigner
+          $APKSIGNER sign \
+            --ks debug.keystore --ks-key-alias key0 \
+            --ks-pass pass:android --key-pass pass:android \
+            --out vpnclient_final.apk \
+            vpnclient_aligned.apk
+          $APKSIGNER verify --verbose vpnclient_final.apk | head -5
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpnclient-signed
+          path: vpnclient_final.apk
