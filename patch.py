@@ -3,21 +3,40 @@ import zipfile, sys
 SRC = 'slagclient.apk'
 OUT = 'vpnclient_patched.apk'
 
-OLD_STR = b'xboard=https://xbdemo.slaglab.com'
-NEW_STR = b'xboard=https://apk1.jiangsuhk.com'
-assert len(OLD_STR) == len(NEW_STR), "length mismatch!"
+# Patch 1: xboard= prefix (33 chars)
+OLD1 = b'xboard=https://xbdemo.slaglab.com'
+NEW1 = b'xboard=https://apk1.jiangsuhk.com'
+
+# Patch 2: bare URL dùng cho API calls (26 chars)
+OLD2 = b'https://xbdemo.slaglab.com'
+NEW2 = b'https://apk1.jiangsuhk.com'
+
+assert len(OLD1)==len(NEW1) and len(OLD2)==len(NEW2), "length mismatch!"
 
 with zipfile.ZipFile(SRC) as z:
     data = bytearray(z.read('lib/arm64-v8a/libapp.so'))
 
-idx = data.find(OLD_STR)
-if idx < 0:
-    sys.exit("ERROR: old URL not found")
-print(f"Found at offset {idx}")
+# Patch tất cả occurrences
+count = 0
+pos = 0
+while True:
+    idx = data.find(OLD1, pos)
+    if idx < 0: break
+    data[idx:idx+len(OLD1)] = NEW1
+    print(f"Patch1 at {idx}: {bytes(data[idx:idx+len(NEW1)])}")
+    count += 1
+    pos = idx + len(NEW1)
 
-# Chỉ replace đúng 33 bytes, không đụng gì khác
-data[idx:idx+33] = NEW_STR
-print(f"Patched: {bytes(data[idx:idx+33])}")
+pos = 0
+while True:
+    idx = data.find(OLD2, pos)
+    if idx < 0: break
+    data[idx:idx+len(OLD2)] = NEW2
+    print(f"Patch2 at {idx}: {bytes(data[idx:idx+len(NEW2)])}")
+    count += 1
+    pos = idx + len(NEW2)
+
+print(f"Total patches: {count}")
 
 with zipfile.ZipFile(SRC, 'r') as zin:
     with zipfile.ZipFile(OUT, 'w') as zout:
@@ -26,7 +45,7 @@ with zipfile.ZipFile(SRC, 'r') as zin:
             if item.filename == 'lib/arm64-v8a/libapp.so':
                 item.compress_type = zipfile.ZIP_STORED
                 zout.writestr(item, data)
-                print(f"Stored libapp.so uncompressed ({len(data)//1024}KB)")
+                print(f"Stored libapp.so ({len(data)//1024}KB)")
             else:
                 zout.writestr(item, raw)
 
